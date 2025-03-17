@@ -23,9 +23,9 @@ def parse_arguments():
     parser.add_argument('--all', action='store_true',
                       help='提取所有可用数据')
     parser.add_argument('--shareholders', action='store_true',
-                      help='提取股东数据')
+                      help='针对于集团提取股东数据')
     parser.add_argument('--products', action='store_true',
-                      help='提取产品数据（APP、Media、Website）')
+                      help='针对于集团提取产品数据（APP、Media、Website）')
     
     return parser.parse_args()
 

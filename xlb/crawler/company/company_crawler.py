@@ -97,7 +97,6 @@ class CompanyCrawler(BaseCrawler):
                                         name_element = item.find_element(By.CSS_SELECTOR, "p.name span.text")
                                         name = name_element.text.strip()
                                         results.append({'产品名': name, '产品链接': link})
-                                        print(f"提取到APP: {name}")
                                     except Exception as e:
                                         print(f"提取APP信息出错: {str(e)}")
                                 
@@ -105,6 +104,7 @@ class CompanyCrawler(BaseCrawler):
                                 if results:
                                     df = pd.DataFrame(results)
                                     self.data_extractor.save_to_excel(df, 'APP')
+                                    print(f"保存了 {len(results)} 个APP记录")
                             else:
                                 print("APP标签页内容为空，跳过处理")
                     except Exception as e:
@@ -147,7 +147,6 @@ class CompanyCrawler(BaseCrawler):
                                         name_element = item.find_element(By.CSS_SELECTOR, "div.content p")
                                         name = name_element.text.strip()
                                         results.append({'媒体名': name, '媒体链接': link})
-                                        print(f"提取到Media: {name}")
                                     except Exception as e:
                                         print(f"提取Media信息出错: {str(e)}")
                                 
@@ -155,6 +154,7 @@ class CompanyCrawler(BaseCrawler):
                                 if results:
                                     df = pd.DataFrame(results)
                                     self.data_extractor.save_to_excel(df, 'Media')
+                                    print(f"保存了 {len(results)} 个Media记录")
                                     # 处理媒体数据分类
                                     self.data_extractor.process_media_data()
                             else:
@@ -199,7 +199,6 @@ class CompanyCrawler(BaseCrawler):
                                         name_element = item.find_element(By.CSS_SELECTOR, "div.website-item-name p")
                                         name = name_element.text.strip()
                                         results.append({'网站名': name, '网站链接': link})
-                                        print(f"提取到Website: {name}")
                                     except Exception as e:
                                         print(f"提取Website信息出错: {str(e)}")
                                 
@@ -207,6 +206,7 @@ class CompanyCrawler(BaseCrawler):
                                 if results:
                                     df = pd.DataFrame(results)
                                     self.data_extractor.save_to_excel(df, 'Website')
+                                    print(f"保存了 {len(results)} 个Website记录")
                             else:
                                 print("Website标签页内容为空，跳过处理")
                     except Exception as e:

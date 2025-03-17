@@ -47,7 +47,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "p.name span.text").text.strip()
                 link = item.get_attribute('href')
                 results.append({'产品名': name, '产品链接': link})
-                print(f"提取到APP: {name}")
             except Exception as e:
                 print(f"提取APP信息出错: {str(e)}")
         
@@ -68,7 +67,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "div.media-item-name p").text.strip()
                 link = item.get_attribute('href')
                 results.append({'媒体名': name, '媒体链接': link})
-                print(f"提取到Media: {name}")
             except Exception as e:
                 print(f"提取Media信息出错: {str(e)}")
         
@@ -89,7 +87,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "div.website-item-name p").text.strip()
                 link = item.get_attribute('href')
                 results.append({'网站名': name, '网站链接': link})
-                print(f"提取到Website: {name}")
             except Exception as e:
                 print(f"提取Website信息出错: {str(e)}")
         
@@ -138,7 +135,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'成员名': name, '成员链接': link})
-                print(f"提取到集团成员: {name}")
             except Exception as e:
                 print(f"提取集团成员信息出错: {str(e)}")
         
@@ -164,7 +160,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'被投资方': name, '被投资方链接': link})
-                print(f"提取到对外投资: {name}")
             except Exception as e:
                 print(f"提取对外投资信息出错: {str(e)}")
         
@@ -190,7 +185,6 @@ class DataExtractor:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'投资方': name, '投资方链接': link})
-                print(f"提取到投资方: {name}")
             except Exception as e:
                 print(f"提取投资方信息出错: {str(e)}")
         

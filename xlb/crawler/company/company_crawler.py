@@ -5,6 +5,7 @@ from selenium.common.exceptions import TimeoutException
 import time
 from ..base_crawler import BaseCrawler
 from ..data_extractor import DataExtractor
+import pandas as pd
 
 class CompanyCrawler(BaseCrawler):
     def __init__(self, driver, output_file, url):
@@ -41,69 +42,178 @@ class CompanyCrawler(BaseCrawler):
                 
                 # 4. 处理标签页
                 try:
-                    # 获取标签页
-                    tabs = product_section.find_elements(By.CSS_SELECTOR, "div.el-tabs__nav-wrap div.el-tabs__item")
+                    # 获取标签页容器
+                    tabs_container = product_section.find_element(By.CSS_SELECTOR, "div[role='tablist'].el-tabs__nav.is-top")
+                    print("已找到标签页容器")
+                    
+                    # 获取所有标签页
+                    tabs = tabs_container.find_elements(By.CSS_SELECTOR, "div[role='tab']")
                     print(f"找到 {len(tabs)} 个标签页")
                     
-                    # 打印所有标签页的文本
+                    # 打印所有标签页的文本和状态
                     for i, tab in enumerate(tabs):
-                        print(f"标签 {i+1}: {tab.text}")
+                        tab_id = tab.get_attribute('id')
+                        tab_text = tab.text
+                        tab_class = tab.get_attribute('class')
+                        tab_disabled = 'is-disabled' in tab_class
+                        tab_content = tab.text.split('•')[-1].strip() if '•' in tab.text else ''
+                        
+                        print(f"标签 {i+1}: {tab_text} (ID: {tab_id}, 禁用状态: {tab_disabled}, 内容: {tab_content})")
                     
                     # 处理APP标签页
                     try:
-                        app_tab = product_section.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-app']")
-                        app_tab.click()
-                        print("\n处理APP标签页")
-                        time.sleep(2)
+                        app_tab = tabs_container.find_element(By.CSS_SELECTOR, "div#tab-app[role='tab']")
+                        # 检查标签是否被禁用或内容为null
+                        app_tab_class = app_tab.get_attribute('class')
+                        app_tab_disabled = 'is-disabled' in app_tab_class
+                        app_tab_content = app_tab.text.split('•')[-1].strip() if '•' in app_tab.text else ''
                         
-                        content_container = product_section.find_element(By.CLASS_NAME, "content-item")
-                        # 检查内容是否为空
-                        if content_container.find_elements(By.CSS_SELECTOR, "a.component-app-item"):
-                            self.data_extractor.scroll_container(content_container)
-                            self.data_extractor.extract_app_content(content_container)
+                        if app_tab_disabled or app_tab_content == 'null':
+                            print("APP标签被禁用或内容为null，跳过处理")
                         else:
-                            print("APP标签页内容为空，跳过处理")
+                            app_tab.click()
+                            print("\n处理APP标签页")
+                            time.sleep(2)
+                            
+                            # 等待APP内容加载
+                            app_pane = self.wait.until(
+                                EC.visibility_of_element_located((By.CSS_SELECTOR, "div#pane-app[role='tabpanel']"))
+                            )
+                            
+                            # 获取内容容器
+                            content_container = app_pane.find_element(By.CSS_SELECTOR, "div.content-item")
+                            
+                            # 检查内容是否为空
+                            app_items = content_container.find_elements(By.CSS_SELECTOR, "a.component-app-item")
+                            if app_items:
+                                print(f"找到 {len(app_items)} 个APP项")
+                                self.data_extractor.scroll_container(content_container)
+                                
+                                # 提取APP数据
+                                results = []
+                                for item in app_items:
+                                    try:
+                                        link = item.get_attribute('href')
+                                        name_element = item.find_element(By.CSS_SELECTOR, "p.name span.text")
+                                        name = name_element.text.strip()
+                                        results.append({'产品名': name, '产品链接': link})
+                                        print(f"提取到APP: {name}")
+                                    except Exception as e:
+                                        print(f"提取APP信息出错: {str(e)}")
+                                
+                                # 保存到Excel
+                                if results:
+                                    df = pd.DataFrame(results)
+                                    self.data_extractor.save_to_excel(df, 'APP')
+                            else:
+                                print("APP标签页内容为空，跳过处理")
                     except Exception as e:
                         print(f"处理APP标签页时出错: {str(e)}")
                     
                     # 处理Media标签页
                     try:
-                        media_tab = product_section.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-media']")
-                        media_tab.click()
-                        print("\n处理Media标签页")
-                        time.sleep(2)
+                        media_tab = tabs_container.find_element(By.CSS_SELECTOR, "div#tab-media[role='tab']")
+                        # 检查标签是否被禁用或内容为null
+                        media_tab_class = media_tab.get_attribute('class')
+                        media_tab_disabled = 'is-disabled' in media_tab_class
+                        media_tab_content = media_tab.text.split('•')[-1].strip() if '•' in media_tab.text else ''
                         
-                        content_container = product_section.find_element(By.CLASS_NAME, "content-item")
-                        # 检查内容是否为空
-                        if content_container.find_elements(By.CSS_SELECTOR, "a.component-media-item"):
-                            self.data_extractor.scroll_container(content_container)
-                            self.data_extractor.extract_media_content(content_container)
-                            # 处理媒体数据分类
-                            self.data_extractor.process_media_data()
+                        if media_tab_disabled or media_tab_content == 'null':
+                            print("Media标签被禁用或内容为null，跳过处理")
                         else:
-                            print("Media标签页内容为空，跳过处理")
+                            media_tab.click()
+                            print("\n处理Media标签页")
+                            time.sleep(2)
+                            
+                            # 等待Media内容加载
+                            media_pane = self.wait.until(
+                                EC.visibility_of_element_located((By.CSS_SELECTOR, "div#pane-media[role='tabpanel']"))
+                            )
+                            
+                            # 获取内容容器
+                            content_container = media_pane.find_element(By.CSS_SELECTOR, "div.content-item")
+                            
+                            # 检查内容是否为空
+                            media_items = content_container.find_elements(By.CSS_SELECTOR, "a.component-media-item")
+                            if media_items:
+                                print(f"找到 {len(media_items)} 个Media项")
+                                self.data_extractor.scroll_container(content_container)
+                                
+                                # 提取Media数据
+                                results = []
+                                for item in media_items:
+                                    try:
+                                        link = item.get_attribute('href')
+                                        name_element = item.find_element(By.CSS_SELECTOR, "div.content p")
+                                        name = name_element.text.strip()
+                                        results.append({'媒体名': name, '媒体链接': link})
+                                        print(f"提取到Media: {name}")
+                                    except Exception as e:
+                                        print(f"提取Media信息出错: {str(e)}")
+                                
+                                # 保存到Excel
+                                if results:
+                                    df = pd.DataFrame(results)
+                                    self.data_extractor.save_to_excel(df, 'Media')
+                                    # 处理媒体数据分类
+                                    self.data_extractor.process_media_data()
+                            else:
+                                print("Media标签页内容为空，跳过处理")
                     except Exception as e:
                         print(f"处理Media标签页时出错: {str(e)}")
                     
                     # 处理Website标签页
                     try:
-                        website_tab = product_section.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-website']")
-                        website_tab.click()
-                        print("\n处理Website标签页")
-                        time.sleep(2)
+                        website_tab = tabs_container.find_element(By.CSS_SELECTOR, "div#tab-website[role='tab']")
+                        # 检查标签是否被禁用或内容为null
+                        website_tab_class = website_tab.get_attribute('class')
+                        website_tab_disabled = 'is-disabled' in website_tab_class
+                        website_tab_content = website_tab.text.split('•')[-1].strip() if '•' in website_tab.text else ''
                         
-                        content_container = product_section.find_element(By.CLASS_NAME, "content-item")
-                        # 检查内容是否为空
-                        if content_container.find_elements(By.CSS_SELECTOR, "a.component-website-item"):
-                            self.data_extractor.scroll_container(content_container)
-                            self.data_extractor.extract_website_content(content_container)
+                        if website_tab_disabled or website_tab_content == 'null':
+                            print("Website标签被禁用或内容为null，跳过处理")
                         else:
-                            print("Website标签页内容为空，跳过处理")
+                            website_tab.click()
+                            print("\n处理Website标签页")
+                            time.sleep(2)
+                            
+                            # 等待Website内容加载
+                            website_pane = self.wait.until(
+                                EC.visibility_of_element_located((By.CSS_SELECTOR, "div#pane-website[role='tabpanel']"))
+                            )
+                            
+                            # 获取内容容器
+                            content_container = website_pane.find_element(By.CSS_SELECTOR, "div.content-item")
+                            
+                            # 检查内容是否为空
+                            website_items = content_container.find_elements(By.CSS_SELECTOR, "a.component-website-item")
+                            if website_items:
+                                print(f"找到 {len(website_items)} 个Website项")
+                                self.data_extractor.scroll_container(content_container)
+                                
+                                # 提取Website数据
+                                results = []
+                                for item in website_items:
+                                    try:
+                                        link = item.get_attribute('href')
+                                        name_element = item.find_element(By.CSS_SELECTOR, "div.website-item-name p")
+                                        name = name_element.text.strip()
+                                        results.append({'网站名': name, '网站链接': link})
+                                        print(f"提取到Website: {name}")
+                                    except Exception as e:
+                                        print(f"提取Website信息出错: {str(e)}")
+                                
+                                # 保存到Excel
+                                if results:
+                                    df = pd.DataFrame(results)
+                                    self.data_extractor.save_to_excel(df, 'Website')
+                            else:
+                                print("Website标签页内容为空，跳过处理")
                     except Exception as e:
                         print(f"处理Website标签页时出错: {str(e)}")
                     
-                except TimeoutException:
-                    print("未找到标签页")
+                except Exception as e:
+                    print(f"处理标签页时出错: {str(e)}")
                     retry_count += 1
                     continue
                 

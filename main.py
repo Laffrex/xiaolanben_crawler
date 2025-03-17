@@ -5,6 +5,7 @@ from xlb.utils.browser_utils import init_driver
 from xlb.crawler.group.shareholder_crawler import ShareholderCrawler as GroupShareholderCrawler
 from xlb.crawler.group.group_crawler import GroupCrawler
 from xlb.crawler.company.company_crawler import CompanyCrawler
+from xlb.crawler.companys_in_group.group_members_crawler import GroupMembersCrawler
 
 def parse_arguments():
     """解析命令行参数"""
@@ -26,6 +27,10 @@ def parse_arguments():
                       help='针对于集团提取股东数据')
     parser.add_argument('--products', action='store_true',
                       help='针对于集团提取产品数据（APP、Media、Website）')
+    parser.add_argument('--recursive', action='store_true',
+                      help='递归提取集团成员的公司数据')
+    parser.add_argument('--members-output', 
+                      help='集团成员数据输出文件名（不需要包含.xlsx扩展名），默认为"xiaolanben_companys_in_group"')
     
     return parser.parse_args()
 
@@ -44,6 +49,11 @@ def main():
     # 获取当前脚本所在目录
     current_dir = os.path.dirname(os.path.abspath(__file__))
     output_file = os.path.join(current_dir, f"{args.filename}.xlsx")
+    
+    # 设置集团成员输出文件
+    members_output_file = None
+    if args.members_output:
+        members_output_file = os.path.join(current_dir, f"{args.members_output}.xlsx")
     
     try:
         # 使用统一的浏览器初始化函数
@@ -69,6 +79,12 @@ def main():
                 print("\n开始获取集团产品数据...")
                 group_crawler = GroupCrawler(driver, output_file, args.group)
                 group_crawler.get_company_and_website_info()
+            
+            # 递归提取集团成员数据
+            if args.recursive:
+                print("\n开始递归提取集团成员数据...")
+                members_crawler = GroupMembersCrawler(driver, output_file, members_output_file)
+                members_crawler.extract_members_data(recursive=True)
         
         else:
             # 处理公司数据

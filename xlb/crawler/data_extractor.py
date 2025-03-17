@@ -15,26 +15,63 @@ class DataExtractor:
 
     def save_to_excel(self, df, sheet_name):
         """保存数据到Excel文件的指定表格"""
-        try:
-            print(f"正在保存数据到文件: {self.output_file}")
-            print(f"表格名称: {sheet_name}")
-            print(f"数据行数: {len(df)}")
-            
-            if os.path.exists(self.output_file):
-                # 如果文件存在，使用openpyxl引擎以追加模式打开
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-            else:
-                # 如果文件不存在，创建新文件
-                with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            print(f"成功保存 {len(df)} 条记录到 {sheet_name} 表格")
-            return True
-        except Exception as e:
-            print(f"保存数据到Excel时出错: {str(e)}")
-            print(f"尝试保存的文件路径: {self.output_file}")
-            return False
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"正在保存数据到文件: {self.output_file}")
+                print(f"表格名称: {sheet_name}")
+                print(f"数据行数: {len(df)}")
+                
+                if os.path.exists(self.output_file):
+                    # 如果文件存在，使用openpyxl引擎以追加模式打开
+                    try:
+                        with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    except Exception as e:
+                        print(f"使用追加模式保存失败: {str(e)}，尝试使用覆盖模式")
+                        # 如果追加模式失败，尝试读取所有表格，然后重新写入
+                        try:
+                            # 读取所有现有表格（除了当前要保存的表格）
+                            excel_file = pd.ExcelFile(self.output_file)
+                            all_sheets = {}
+                            for sheet in excel_file.sheet_names:
+                                if sheet != sheet_name:
+                                    all_sheets[sheet] = pd.read_excel(excel_file, sheet_name=sheet)
+                            
+                            # 创建新的Excel文件
+                            with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
+                                # 先写入当前数据
+                                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                                # 再写入其他表格
+                                for sheet, data in all_sheets.items():
+                                    data.to_excel(writer, sheet_name=sheet, index=False)
+                        except Exception as inner_e:
+                            print(f"覆盖模式也失败: {str(inner_e)}，尝试创建新文件")
+                            # 如果读取现有表格失败，直接创建新文件
+                            with pd.ExcelWriter(f"{self.output_file}.new", engine='openpyxl') as writer:
+                                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                            # 备份原文件并重命名新文件
+                            if os.path.exists(self.output_file):
+                                os.rename(self.output_file, f"{self.output_file}.bak")
+                            os.rename(f"{self.output_file}.new", self.output_file)
+                else:
+                    # 如果文件不存在，创建新文件
+                    with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                print(f"成功保存 {len(df)} 条记录到 {sheet_name} 表格")
+                return True
+                
+            except Exception as e:
+                print(f"保存数据到Excel时出错 (尝试 {retry_count+1}/{max_retries}): {str(e)}")
+                print(f"尝试保存的文件路径: {self.output_file}")
+                retry_count += 1
+                time.sleep(2)  # 等待2秒后重试
+        
+        print(f"保存数据失败，已达到最大重试次数 ({max_retries})")
+        return False
 
     def extract_app_content(self, content_container):
         """提取APP内容"""
@@ -53,27 +90,137 @@ class DataExtractor:
         # 保存到Excel
         if results:
             df = pd.DataFrame(results)
+            # 检查是否存在现有数据并合并
+            try:
+                existing_df = self._read_existing_data('APP', ['产品名', '产品链接'])
+                if not existing_df.empty:
+                    print(f"合并 {len(existing_df)} 条现有APP数据")
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                    # 去重
+                    df = df.drop_duplicates(subset=['产品链接'], keep='last')
+            except Exception as e:
+                print(f"读取现有APP数据时出错: {str(e)}")
+            
             self.save_to_excel(df, 'APP')
+            print(f"保存了 {len(df)} 个APP记录")
         return results
 
     def extract_media_content(self, content_container):
-        """提取Media内容"""
+        """提取Media内容并直接分类处理"""
         results = []
         media_items = content_container.find_elements(By.CSS_SELECTOR, "a.component-media-item")
         print(f"找到 {len(media_items)} 个Media项")
         
         for item in media_items:
             try:
-                name = item.find_element(By.CSS_SELECTOR, "div.media-item-name p").text.strip()
+                # 尝试不同的选择器以适应不同页面的结构
+                try:
+                    # 集团页面的选择器
+                    name = item.find_element(By.CSS_SELECTOR, "div.media-item-name p").text.strip()
+                except:
+                    try:
+                        # 公司页面的选择器
+                        name = item.find_element(By.CSS_SELECTOR, "div.content p").text.strip()
+                    except:
+                        # 通用备选选择器
+                        name = item.find_element(By.CSS_SELECTOR, "p").text.strip()
+                
                 link = item.get_attribute('href')
                 results.append({'媒体名': name, '媒体链接': link})
             except Exception as e:
                 print(f"提取Media信息出错: {str(e)}")
         
-        # 保存到Excel
-        if results:
-            df = pd.DataFrame(results)
-            self.save_to_excel(df, 'Media')
+        if not results:
+            print("没有找到媒体数据")
+            return results
+        
+        try:
+            # 创建三个空的DataFrame用于存储分类后的数据
+            wechat_df = pd.DataFrame(columns=['微信公众号', '链接'])
+            miniapp_df = pd.DataFrame(columns=['微信小程序', '链接'])
+            other_df = pd.DataFrame(columns=['其他媒体', '链接'])
+            
+            # 遍历媒体数据进行分类
+            for item in results:
+                try:
+                    media_name = item['媒体名']
+                    media_link = item['媒体链接']
+                    
+                    # 根据链接分类
+                    if isinstance(media_link, str):
+                        if 'sou.xiaolanben.com/media/wechat/' in media_link:
+                            wechat_df = pd.concat([wechat_df, pd.DataFrame({
+                                '微信公众号': [media_name],
+                                '链接': [media_link]
+                            })], ignore_index=True)
+                            
+                        elif 'sou.xiaolanben.com/media/xcx/' in media_link:
+                            miniapp_df = pd.concat([miniapp_df, pd.DataFrame({
+                                '微信小程序': [media_name],
+                                '链接': [media_link]
+                            })], ignore_index=True)
+                            
+                        else:
+                            other_df = pd.concat([other_df, pd.DataFrame({
+                                '其他媒体': [media_name],
+                                '链接': [media_link]
+                            })], ignore_index=True)
+                except Exception as e:
+                    print(f"处理单个媒体项时出错: {str(e)}, 项目内容: {item}")
+                    continue
+            
+            # 保存分类后的数据，并与现有数据合并
+            try:
+                if not wechat_df.empty:
+                    # 检查是否存在现有数据并合并
+                    existing_wechat_df = self._read_existing_data('微信公众号', ['微信公众号', '链接'])
+                    if not existing_wechat_df.empty:
+                        print(f"合并 {len(existing_wechat_df)} 条现有微信公众号数据")
+                        wechat_df = pd.concat([existing_wechat_df, wechat_df], ignore_index=True)
+                        # 去重
+                        wechat_df = wechat_df.drop_duplicates(subset=['链接'], keep='last')
+                    
+                    self.save_to_excel(wechat_df, '微信公众号')
+                    print(f"保存了 {len(wechat_df)} 个微信公众号记录")
+            except Exception as e:
+                print(f"保存微信公众号数据时出错: {str(e)}")
+            
+            try:
+                if not miniapp_df.empty:
+                    # 检查是否存在现有数据并合并
+                    existing_miniapp_df = self._read_existing_data('微信小程序', ['微信小程序', '链接'])
+                    if not existing_miniapp_df.empty:
+                        print(f"合并 {len(existing_miniapp_df)} 条现有微信小程序数据")
+                        miniapp_df = pd.concat([existing_miniapp_df, miniapp_df], ignore_index=True)
+                        # 去重
+                        miniapp_df = miniapp_df.drop_duplicates(subset=['链接'], keep='last')
+                    
+                    self.save_to_excel(miniapp_df, '微信小程序')
+                    print(f"保存了 {len(miniapp_df)} 个微信小程序记录")
+            except Exception as e:
+                print(f"保存微信小程序数据时出错: {str(e)}")
+            
+            try:
+                if not other_df.empty:
+                    # 检查是否存在现有数据并合并
+                    existing_other_df = self._read_existing_data('其他媒体', ['其他媒体', '链接'])
+                    if not existing_other_df.empty:
+                        print(f"合并 {len(existing_other_df)} 条现有其他媒体数据")
+                        other_df = pd.concat([existing_other_df, other_df], ignore_index=True)
+                        # 去重
+                        other_df = other_df.drop_duplicates(subset=['链接'], keep='last')
+                    
+                    self.save_to_excel(other_df, '其他媒体')
+                    print(f"保存了 {len(other_df)} 个其他媒体记录")
+            except Exception as e:
+                print(f"保存其他媒体数据时出错: {str(e)}")
+            
+            print(f"处理了 {len(results)} 个媒体数据")
+        except Exception as e:
+            print(f"处理媒体数据时出错: {str(e)}")
+            if 'results' in locals():
+                print(f"媒体数据项数: {len(results)}")
+        
         return results
 
     def extract_website_content(self, content_container):
@@ -93,7 +240,19 @@ class DataExtractor:
         # 保存到Excel
         if results:
             df = pd.DataFrame(results)
+            # 检查是否存在现有数据并合并
+            try:
+                existing_df = self._read_existing_data('Website', ['网站名', '网站链接'])
+                if not existing_df.empty:
+                    print(f"合并 {len(existing_df)} 条现有Website数据")
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                    # 去重
+                    df = df.drop_duplicates(subset=['网站链接'], keep='last')
+            except Exception as e:
+                print(f"读取现有Website数据时出错: {str(e)}")
+            
             self.save_to_excel(df, 'Website')
+            print(f"保存了 {len(df)} 个Website记录")
         return results
 
     def scroll_container(self, content_container):
@@ -141,12 +300,20 @@ class DataExtractor:
         # 保存到Excel
         if results:
             df = pd.DataFrame(results)
+            # 检查是否存在现有数据并合并
             try:
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a' if os.path.exists(self.output_file) else 'w') as writer:
-                    df.to_excel(writer, sheet_name='集团成员', index=False)
-                print(f"保存了 {len(results)} 个集团成员记录")
+                existing_df = self._read_existing_data('集团成员', ['成员名', '成员链接'])
+                if not existing_df.empty:
+                    print(f"合并 {len(existing_df)} 条现有集团成员数据")
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                    # 去重
+                    df = df.drop_duplicates(subset=['成员链接'], keep='last')
             except Exception as e:
-                print(f"保存集团成员数据时出错: {str(e)}")
+                print(f"读取现有集团成员数据时出错: {str(e)}")
+            
+            # 使用增强的save_to_excel方法保存
+            self.save_to_excel(df, '集团成员')
+            print(f"保存了 {len(df)} 个集团成员记录")
         return results
 
     def extract_investments(self, content_container):
@@ -166,12 +333,20 @@ class DataExtractor:
         # 保存到Excel
         if results:
             df = pd.DataFrame(results)
+            # 检查是否存在现有数据并合并
             try:
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a' if os.path.exists(self.output_file) else 'w') as writer:
-                    df.to_excel(writer, sheet_name='对外投资', index=False)
-                print(f"保存了 {len(results)} 个对外投资记录")
+                existing_df = self._read_existing_data('对外投资', ['被投资方', '被投资方链接'])
+                if not existing_df.empty:
+                    print(f"合并 {len(existing_df)} 条现有对外投资数据")
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                    # 去重
+                    df = df.drop_duplicates(subset=['被投资方链接'], keep='last')
             except Exception as e:
-                print(f"保存对外投资数据时出错: {str(e)}")
+                print(f"读取现有对外投资数据时出错: {str(e)}")
+            
+            # 使用增强的save_to_excel方法保存
+            self.save_to_excel(df, '对外投资')
+            print(f"保存了 {len(df)} 个对外投资记录")
         return results
 
     def extract_investors(self, content_container):
@@ -191,74 +366,49 @@ class DataExtractor:
         # 保存到Excel
         if results:
             df = pd.DataFrame(results)
+            # 检查是否存在现有数据并合并
             try:
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a' if os.path.exists(self.output_file) else 'w') as writer:
-                    df.to_excel(writer, sheet_name='投资方', index=False)
-                print(f"保存了 {len(results)} 个投资方记录")
+                existing_df = self._read_existing_data('投资方', ['投资方', '投资方链接'])
+                if not existing_df.empty:
+                    print(f"合并 {len(existing_df)} 条现有投资方数据")
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                    # 去重
+                    df = df.drop_duplicates(subset=['投资方链接'], keep='last')
             except Exception as e:
-                print(f"保存投资方数据时出错: {str(e)}")
+                print(f"读取现有投资方数据时出错: {str(e)}")
+            
+            # 使用增强的save_to_excel方法保存
+            self.save_to_excel(df, '投资方')
+            print(f"保存了 {len(df)} 个投资方记录")
         return results
 
     def process_media_data(self):
-        """处理媒体数据并分类保存"""
+        """处理媒体数据并分类保存（为保持向后兼容性而保留，实际处理已在extract_media_content中完成）"""
+        print("媒体数据已在提取时处理，无需再次处理")
+        return True 
+
+    def _read_existing_data(self, sheet_name, columns):
+        """读取现有Excel表格数据的辅助方法"""
         try:
-            # 读取Excel文件中的Media表
-            df = pd.read_excel(self.output_file, sheet_name='Media')
-            
-            # 创建三个空的DataFrame用于存储分类后的数据
-            wechat_df = pd.DataFrame(columns=['微信公众号', '链接'])
-            miniapp_df = pd.DataFrame(columns=['微信小程序', '链接'])
-            other_df = pd.DataFrame(columns=['其他媒体', '链接'])
-            
-            # 遍历Media表中的每一行
-            for index, row in df.iterrows():
-                media_name = row['媒体名']
-                media_link = row['媒体链接']
-                
-                # 根据链接分类，不考虑@符号
-                if isinstance(media_link, str):
-                    if 'sou.xiaolanben.com/media/wechat/' in media_link:
-                        wechat_df = pd.concat([wechat_df, pd.DataFrame({
-                            '微信公众号': [media_name],
-                            '链接': [media_link]
-                        })], ignore_index=True)
-                        
-                    elif 'sou.xiaolanben.com/media/xcx/' in media_link:
-                        miniapp_df = pd.concat([miniapp_df, pd.DataFrame({
-                            '微信小程序': [media_name],
-                            '链接': [media_link]
-                        })], ignore_index=True)
-                        
+            if os.path.exists(self.output_file):
+                try:
+                    # 尝试读取指定表格
+                    existing_df = pd.read_excel(self.output_file, sheet_name=sheet_name)
+                    
+                    # 检查列名是否匹配
+                    if all(col in existing_df.columns for col in columns):
+                        # 只保留需要的列
+                        existing_df = existing_df[columns]
+                        return existing_df
                     else:
-                        other_df = pd.concat([other_df, pd.DataFrame({
-                            '其他媒体': [media_name],
-                            '链接': [media_link]
-                        })], ignore_index=True)
-            
-            # 使用ExcelWriter保存多个表格
-            with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a') as writer:
-                # 删除原有的Media表（如果存在）
-                if 'Media' in writer.book.sheetnames:
-                    idx = writer.book.sheetnames.index('Media')
-                    writer.book.remove(writer.book.worksheets[idx])
-                
-                # 保存新的分类表格
-                if not wechat_df.empty:
-                    wechat_df.to_excel(writer, sheet_name='微信公众号', index=False)
-                    print(f"保存了 {len(wechat_df)} 个微信公众号记录")
-                if not miniapp_df.empty:
-                    miniapp_df.to_excel(writer, sheet_name='微信小程序', index=False)
-                    print(f"保存了 {len(miniapp_df)} 个微信小程序记录")
-                if not other_df.empty:
-                    other_df.to_excel(writer, sheet_name='其他媒体', index=False)
-                    print(f"保存了 {len(other_df)} 个其他媒体记录")
-                
-            print("媒体数据分类完成！")
-            return True
-            
+                        print(f"表格 {sheet_name} 的列名不匹配，将创建新表格")
+                        return pd.DataFrame(columns=columns)
+                except Exception as e:
+                    print(f"读取表格 {sheet_name} 时出错: {str(e)}")
+                    return pd.DataFrame(columns=columns)
+            else:
+                print(f"文件 {self.output_file} 不存在，将创建新文件")
+                return pd.DataFrame(columns=columns)
         except Exception as e:
-            print(f"处理媒体数据时出错: {str(e)}")
-            # 添加更详细的错误信息
-            if 'df' in locals():
-                print(f"DataFrame的列名: {df.columns.tolist()}")
-            return False 
+            print(f"读取现有数据时出错: {str(e)}")
+            return pd.DataFrame(columns=columns) 

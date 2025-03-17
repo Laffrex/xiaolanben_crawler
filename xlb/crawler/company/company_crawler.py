@@ -139,24 +139,8 @@ class CompanyCrawler(BaseCrawler):
                                 print(f"找到 {len(media_items)} 个Media项")
                                 self.data_extractor.scroll_container(content_container)
                                 
-                                # 提取Media数据
-                                results = []
-                                for item in media_items:
-                                    try:
-                                        link = item.get_attribute('href')
-                                        name_element = item.find_element(By.CSS_SELECTOR, "div.content p")
-                                        name = name_element.text.strip()
-                                        results.append({'媒体名': name, '媒体链接': link})
-                                    except Exception as e:
-                                        print(f"提取Media信息出错: {str(e)}")
-                                
-                                # 保存到Excel
-                                if results:
-                                    df = pd.DataFrame(results)
-                                    self.data_extractor.save_to_excel(df, 'Media')
-                                    print(f"保存了 {len(results)} 个Media记录")
-                                    # 处理媒体数据分类
-                                    self.data_extractor.process_media_data()
+                                # 直接使用extract_media_content方法处理媒体数据
+                                self.data_extractor.extract_media_content(content_container)
                             else:
                                 print("Media标签页内容为空，跳过处理")
                     except Exception as e:

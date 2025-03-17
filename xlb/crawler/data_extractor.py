@@ -206,36 +206,33 @@ class DataExtractor:
             df = pd.read_excel(self.output_file, sheet_name='Media')
             
             # 创建三个空的DataFrame用于存储分类后的数据
-            wechat_df = pd.DataFrame(columns=['公众号名', '公众号链接'])
-            miniapp_df = pd.DataFrame(columns=['小程序名', '小程序链接'])
-            other_df = pd.DataFrame(columns=['媒体名', '媒体链接'])
+            wechat_df = pd.DataFrame(columns=['微信公众号', '链接'])
+            miniapp_df = pd.DataFrame(columns=['微信小程序', '链接'])
+            other_df = pd.DataFrame(columns=['其他媒体', '链接'])
             
             # 遍历Media表中的每一行
             for index, row in df.iterrows():
                 media_name = row['媒体名']
                 media_link = row['媒体链接']
                 
-                # 去除可能存在的@符号
+                # 根据链接分类，不考虑@符号
                 if isinstance(media_link, str):
-                    media_link = media_link.replace('@', '')
-                    
-                    # 根据链接分类
-                    if media_link.startswith('https://sou.xiaolanben.com/media/wechat/'):
+                    if 'sou.xiaolanben.com/media/wechat/' in media_link:
                         wechat_df = pd.concat([wechat_df, pd.DataFrame({
-                            '公众号名': [media_name],
-                            '公众号链接': [media_link]
+                            '微信公众号': [media_name],
+                            '链接': [media_link]
                         })], ignore_index=True)
                         
-                    elif media_link.startswith('https://sou.xiaolanben.com/media/xcx/'):
+                    elif 'sou.xiaolanben.com/media/xcx/' in media_link:
                         miniapp_df = pd.concat([miniapp_df, pd.DataFrame({
-                            '小程序名': [media_name],
-                            '小程序链接': [media_link]
+                            '微信小程序': [media_name],
+                            '链接': [media_link]
                         })], ignore_index=True)
                         
                     else:
                         other_df = pd.concat([other_df, pd.DataFrame({
-                            '媒体名': [media_name],
-                            '媒体链接': [media_link]
+                            '其他媒体': [media_name],
+                            '链接': [media_link]
                         })], ignore_index=True)
             
             # 使用ExcelWriter保存多个表格
@@ -247,14 +244,14 @@ class DataExtractor:
                 
                 # 保存新的分类表格
                 if not wechat_df.empty:
-                    wechat_df.to_excel(writer, sheet_name='公众号', index=False)
-                    print(f"保存了 {len(wechat_df)} 条公众号记录")
+                    wechat_df.to_excel(writer, sheet_name='微信公众号', index=False)
+                    print(f"保存了 {len(wechat_df)} 个微信公众号记录")
                 if not miniapp_df.empty:
-                    miniapp_df.to_excel(writer, sheet_name='小程序', index=False)
-                    print(f"保存了 {len(miniapp_df)} 条小程序记录")
+                    miniapp_df.to_excel(writer, sheet_name='微信小程序', index=False)
+                    print(f"保存了 {len(miniapp_df)} 个微信小程序记录")
                 if not other_df.empty:
                     other_df.to_excel(writer, sheet_name='其他媒体', index=False)
-                    print(f"保存了 {len(other_df)} 条其他媒体记录")
+                    print(f"保存了 {len(other_df)} 个其他媒体记录")
                 
             print("媒体数据分类完成！")
             return True

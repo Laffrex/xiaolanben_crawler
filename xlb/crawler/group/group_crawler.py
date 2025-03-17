@@ -97,6 +97,8 @@ class GroupCrawler(BaseCrawler):
                     if content_container.find_elements(By.CSS_SELECTOR, "a.component-media-item"):
                         self.data_extractor.scroll_container(content_container)
                         self.data_extractor.extract_media_content(content_container)
+                        # 添加对process_media_data方法的调用，处理媒体数据
+                        self.data_extractor.process_media_data()
                     else:
                         print("Media标签页内容为空，跳过处理")
                 except Exception as e:

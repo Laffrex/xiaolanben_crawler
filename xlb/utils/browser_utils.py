@@ -1,4 +1,25 @@
+import os
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
+
+def get_driver_path():
+    """获取ChromeDriver路径"""
+    # 获取项目根目录路径
+    current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    driver_path = os.path.join(current_dir, 'drivers', 'chromedriver.exe')
+    
+    if not os.path.exists(driver_path):
+        raise FileNotFoundError(
+            "\n未找到ChromeDriver！\n"
+            "请按以下步骤操作：\n"
+            "1. 确认Chrome浏览器版本（chrome://version）\n"
+            "2. 下载对应版本的ChromeDriver\n"
+            "3. 将chromedriver.exe放入drivers目录\n"
+            "4. 重新运行程序\n\n"
+            "详细说明请查看 drivers/README.txt"
+        )
+    
+    return driver_path
 
 def init_driver():
     """初始化浏览器驱动"""
@@ -35,4 +56,18 @@ def init_driver():
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
     options.add_experimental_option('useAutomationExtension', False)
     
-    return webdriver.Chrome(options=options) 
+    try:
+        driver_path = get_driver_path()
+        return webdriver.Chrome(executable_path=driver_path, options=options)
+    except WebDriverException as e:
+        if "version" in str(e).lower():
+            raise WebDriverException(
+                "\nChrome浏览器与ChromeDriver版本不匹配！\n"
+                "请按以下步骤操作：\n"
+                "1. 检查Chrome浏览器版本（chrome://version）\n"
+                "2. 下载完全匹配的ChromeDriver版本\n"
+                "3. 替换drivers目录中的chromedriver.exe\n"
+                "4. 重新运行程序\n\n"
+                "详细说明请查看 drivers/README.txt"
+            )
+        raise 

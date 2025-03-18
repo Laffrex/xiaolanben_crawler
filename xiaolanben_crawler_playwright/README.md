@@ -29,26 +29,6 @@ xiaolanben/
 - Chrome浏览器
 - ChromeDriver（与Chrome版本匹配）
 
-## ChromeDriver配置
-首次使用前，请按以下步骤配置ChromeDriver：
-
-1. 查看Chrome版本
-   - 打开Chrome浏览器
-   - 点击右上角三个点
-   - 点击"帮助" -> "关于Google Chrome"
-   - 记下版本号（例如：115.0.5790.171）
-
-2. 下载ChromeDriver
-   - 访问：https://sites.google.com/chromium.org/driver/
-   - 下载与Chrome版本匹配的chromedriver_win32.zip
-
-3. 配置驱动
-   - 解压下载的zip文件
-   - 将chromedriver.exe放入项目的drivers目录下
-   - 确保文件名为"chromedriver.exe"
-
-注意：如果更新了Chrome浏览器，需要重新下载对应版本的ChromeDriver。
-
 ## 依赖安装
 ```bash
 pip install -r requirements.txt

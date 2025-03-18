@@ -28,8 +28,8 @@ class GroupMembersCrawler(BaseCrawler):
         
         # 设置集团成员数据输出文件
         if members_output_file is None:
-            # 获取当前脚本所在目录
-            current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            # 获取main.py所在目录
+            current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
             self.members_output_file = os.path.join(current_dir, "xiaolanben_companys_in_group.xlsx")
         else:
             self.members_output_file = members_output_file

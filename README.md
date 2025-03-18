@@ -44,6 +44,36 @@ pip install -r requirements.txt
 }
 ```
 
+## 命令行参数说明
+程序支持以下命令行参数：
+
+### 必需参数（二选一）
+- `-g, --group`: 集团页面的URL，例如：`https://sou.xiaolanben.com/group/xxx`
+- `-c, --company`: 公司页面的URL，例如：`https://sou.xiaolanben.com/company/xxx`
+
+### 可选参数
+- `-f, --filename`: 输出Excel文件名（不需要包含.xlsx扩展名）
+- `--all`: 提取所有可用数据（默认选项）
+- `--shareholders`: 仅提取集团股东数据
+- `--products`: 仅提取产品数据（APP、Media、Website）
+- `--recursive`: 递归提取集团成员的公司数据
+- `--members-output`: 集团成员数据输出文件名（不需要包含.xlsx扩展名），默认为"xiaolanben_companys_in_group"
+
+### 参数使用示例
+```bash
+# 提取集团所有数据
+python main.py -g https://sou.xiaolanben.com/group/xxx --all
+
+# 提取公司数据并指定输出文件名
+python main.py -c https://sou.xiaolanben.com/company/xxx --all -f custom_name
+
+# 仅提取集团股东数据
+python main.py -g https://sou.xiaolanben.com/group/xxx --shareholders
+
+# 递归提取集团成员数据并指定输出文件名
+python main.py -g https://sou.xiaolanben.com/group/xxx --recursive --members-output custom_members
+```
+
 ## 使用方法
 
 ### 采集集团数据

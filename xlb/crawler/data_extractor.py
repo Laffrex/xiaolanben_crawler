@@ -279,7 +279,7 @@ class DataExtractor:
     def scroll_container(self, content_container, content_type=None):
         """滚动加载内容 - 优化增强版，增加对加载更多按钮的处理"""
         max_scroll_attempts = 50  # 适应更多内容的滚动次数
-        scroll_timeout = time.time() + 60  # 60秒超时
+        scroll_timeout = time.time() + 120  # 120秒超时
         progress_interval = 2  # 每滚动5次显示一次详细进度
         
         # 记录初始项目数和加载按钮点击次数
@@ -471,7 +471,7 @@ class DataExtractor:
                     scroll_count += 1
                     
                     # 打印滚动进度
-                    elapsed_time = time.time() - (scroll_timeout - 60)  # 已经过去的时间
+                    elapsed_time = time.time() - (scroll_timeout -120)  # 已经过去的时间
                     remaining_time = max(0, scroll_timeout - time.time())
                     progress_percent = min(100, (scroll_count / max_scroll_attempts) * 100)
                     print(f"滚动进度: {progress_percent:.1f}% ({scroll_count}/{max_scroll_attempts}) | 已用时: {elapsed_time:.1f}秒 | 剩余时间: {remaining_time:.1f}秒 | 当前高度: {new_height}px")
@@ -482,7 +482,7 @@ class DataExtractor:
             
             # 检查滚动终止原因
             if time.time() >= scroll_timeout:
-                print(f"滚动加载超时 ({scroll_timeout-time.time()+(scroll_timeout-60):.1f}秒)，但已加载部分内容")
+                print(f"滚动加载超时 ({scroll_timeout-time.time()+(scroll_timeout-120):.1f}秒)，但已加载部分内容")
             elif scroll_count >= max_scroll_attempts:
                 print(f"达到最大滚动次数 ({max_scroll_attempts})，但已加载部分内容")
             elif load_more_clicks >= max_load_more_clicks:

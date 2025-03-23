@@ -1,4 +1,5 @@
 import os
+import sys
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.service import Service
@@ -59,8 +60,19 @@ def init_driver():
     
     try:
         driver_path = get_driver_path()
-        service = Service(driver_path)
-        return webdriver.Chrome(service=service, options=options)
+
+        # 根据Python版本使用不同的初始化方式
+        if sys.version_info >= (3, 9):
+            # Python 3.9+ 使用 Service 类
+            from selenium.webdriver.chrome.service import Service
+            service = Service(driver_path)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            # Python 3.8 及以下版本使用 executable_path
+            driver = webdriver.Chrome(executable_path=driver_path, options=options)
+            
+        return driver
+
     except WebDriverException as e:
         if "version" in str(e).lower():
             raise WebDriverException(

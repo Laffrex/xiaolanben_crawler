@@ -56,65 +56,43 @@ class DataExtractor:
             print(f"检查表格存在性时出错: {str(e)}")
             return False
 
-    def save_to_excel(self, df, sheet_name):
-        """保存数据到Excel文件的指定表格"""
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                print(f"正在保存数据到文件: {self.output_file}")
-                print(f"表格名称: {sheet_name}")
-                print(f"数据行数: {len(df)}")
-                
-                if os.path.exists(self.output_file):
-                    # 如果文件存在，使用openpyxl引擎以追加模式打开
-                    try:
-                        with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                            df.to_excel(writer, sheet_name=sheet_name, index=False)
-                    except Exception as e:
-                        print(f"使用追加模式保存失败: {str(e)}，尝试使用覆盖模式")
-                        # 如果追加模式失败，尝试读取所有表格，然后重新写入
-                        try:
-                            # 读取所有现有表格（除了当前要保存的表格）
-                            excel_file = pd.ExcelFile(self.output_file)
-                            all_sheets = {}
-                            for sheet in excel_file.sheet_names:
-                                if sheet != sheet_name:
-                                    all_sheets[sheet] = pd.read_excel(excel_file, sheet_name=sheet)
-                            
-                            # 创建新的Excel文件
-                            with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                                # 先写入当前数据
-                                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                                # 再写入其他表格
-                                for sheet, data in all_sheets.items():
-                                    data.to_excel(writer, sheet_name=sheet, index=False)
-                        except Exception as inner_e:
-                            print(f"覆盖模式也失败: {str(inner_e)}，尝试创建新文件")
-                            # 如果读取现有表格失败，直接创建新文件
-                            with pd.ExcelWriter(f"{self.output_file}.new", engine='openpyxl') as writer:
-                                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            # 备份原文件并重命名新文件
-                            if os.path.exists(self.output_file):
-                                os.rename(self.output_file, f"{self.output_file}.bak")
-                            os.rename(f"{self.output_file}.new", self.output_file)
-                else:
-                    # 如果文件不存在，创建新文件
-                    with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
+    def save_to_excel(self, df, sheet_name, excel_path=None):
+        """保存数据到Excel，增加返回值表示是否成功"""
+        try:
+            if excel_path is None:
+                excel_path = self.output_file
+            
+            if os.path.exists(excel_path):
+                # 如果文件存在，加载它
+                try:
+                    with pd.ExcelWriter(excel_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
-                
-                print(f"成功保存 {len(df)} 条记录到 {sheet_name} 表格")
-                return True
-                
-            except Exception as e:
-                print(f"保存数据到Excel时出错 (尝试 {retry_count+1}/{max_retries}): {str(e)}")
-                print(f"尝试保存的文件路径: {self.output_file}")
-                retry_count += 1
-                time.sleep(2)  # 等待2秒后重试
-        
-        print(f"保存数据失败，已达到最大重试次数 ({max_retries})")
-        return False
+                    print(f"更新 {sheet_name} 表成功")
+                    return True
+                except Exception as e:
+                    print(f"更新Excel表时出错: {str(e)}")
+                    # 如果更新失败，尝试覆盖写入
+                    try:
+                        with pd.ExcelWriter(excel_path, engine='openpyxl', mode='w') as writer:
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        print(f"覆盖写入 {sheet_name} 表成功")
+                        return True
+                    except Exception as e2:
+                        print(f"覆盖写入Excel表时出错: {str(e2)}")
+                        return False
+            else:
+                # 如果文件不存在，创建它
+                try:
+                    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    print(f"创建 {sheet_name} 表成功")
+                    return True
+                except Exception as e:
+                    print(f"创建Excel表时出错: {str(e)}")
+                    return False
+        except Exception as e:
+            print(f"保存Excel表时发生未知错误: {str(e)}")
+            return False
 
     def extract_app_content(self, content_container):
         """提取APP内容"""
@@ -298,89 +276,286 @@ class DataExtractor:
             print(f"保存了 {len(df)} 个Website记录")
         return results
 
-    def scroll_container(self, content_container):
-        """滚动加载内容 - 优化版"""
-        max_scroll_attempts = 50  # 增加最大滚动次数，适应更多内容
-        scroll_timeout = time.time() + 60  # 增加超时时间到60秒
-
-        scroll_count = 0
-        last_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+    def scroll_container(self, content_container, content_type=None):
+        """滚动加载内容 - 优化增强版，增加对加载更多按钮的处理"""
+        max_scroll_attempts = 50  # 适应更多内容的滚动次数
+        scroll_timeout = time.time() + 60  # 60秒超时
+        progress_interval = 2  # 每滚动5次显示一次详细进度
         
-        while scroll_count < max_scroll_attempts and time.time() < scroll_timeout:
-            # 1. 首先滚动到底部
-            self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
-            time.sleep(2.5)  # 等待时间略微延长
+        # 记录初始项目数和加载按钮点击次数
+        initial_items_count = 0
+        load_more_clicks = 0
+        max_load_more_clicks = 20  # 防止无限循环
+        
+        try:
+            # 初始化滚动计数和高度
+            scroll_count = 0
+            items_before = 0
             
-            # 2. 计算当前容器的可见高度
-            container_height = self.driver.execute_script(
-                "return arguments[0].clientHeight || arguments[0].offsetHeight;", content_container)
+            # 根据内容类型选择合适的选择器
+            item_selector = "a.component-shareholder-item"
+            if content_type == None or content_type == "":
+                # 通用选择器，适用于所有类型
+                item_selector = "a.component-shareholder-item, a.component-app-item, a.component-media-item, a.component-website-item"
             
-            # 3. 向上滚动一小段距离（约20%的容器高度）
-            scroll_up_distance = int(container_height * 0.2)
-            current_scroll = self.driver.execute_script("return arguments[0].scrollTop;", content_container)
-            self.driver.execute_script(
-                "arguments[0].scrollTo(0, arguments[1]);", 
-                content_container, 
-                max(0, current_scroll - scroll_up_distance)
-            )
-            time.sleep(1)  # 等待短暂时间
+            # 尝试获取初始项目数量
+            try:
+                items_before = len(content_container.find_elements(By.CSS_SELECTOR, item_selector))
+                initial_items_count = items_before
+                print(f"初始项目数量: {items_before}")
+            except Exception as e:
+                print(f"获取初始项目数量出错: {str(e)}")
+                
+            # 记录初始高度
+            last_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+            print(f"初始内容高度: {last_height}px")
             
-            # 4. 再次向下滚动到底部
-            self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
-            time.sleep(1)  # 等待内容加载
-            
-            # 5. 计算新的滚动高度
-            new_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
-            
-            # 如果高度没有变化，说明已经到达底部
-            if new_height == last_height:
-                # 连续两次高度相同，可能已到达底部
-                # 再尝试一次回弹操作，确保真的到底了
-                if scroll_count > 0:  # 至少已经滚动过一次
-                    # 最后一次回弹尝试
+            # 主循环 - 处理滚动和加载更多按钮
+            while (scroll_count < max_scroll_attempts and 
+                   time.time() < scroll_timeout and 
+                   load_more_clicks < max_load_more_clicks):
+                try:
+                    # 1. 首先滚动到底部
+                    self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+                    time.sleep(2.5)  # 等待内容加载
+                    
+                    # 2. 检查是否有"加载更多"或"查看更多"按钮
+                    load_more_btn = None
+                    
+                    # 多种可能的查找方式 - 只对股东数据相关内容进行按钮查找
+                    if content_type in ['group_members', 'investments', 'investors'] or item_selector == "a.component-shareholder-item":
+                        try:
+                            # 方式1: 通过文本内容查找加载更多按钮
+                            load_more_elements = content_container.find_elements(
+                                By.XPATH, 
+                                ".//*[contains(text(),'加载更多') or contains(text(),'查看更多') or contains(text(),'加载') or contains(text(),'更多')]"
+                            )
+                            
+                            # 方式2: 通过类名查找加载更多按钮
+                            if not load_more_elements:
+                                load_more_elements = content_container.find_elements(
+                                    By.CSS_SELECTOR, 
+                                    ".load-more, .more, .view-more, button.el-button, .el-button--text"
+                                )
+                            
+                            # 检查找到的元素是否可见和可点击
+                            for element in load_more_elements:
+                                if element.is_displayed() and element.is_enabled():
+                                    load_more_btn = element
+                                    break
+                                    
+                            if load_more_btn:
+                                btn_text = "无文本"
+                                try:
+                                    btn_text = load_more_btn.text.strip()
+                                except:
+                                    pass
+                                
+                                print(f"找到'加载更多'按钮: {btn_text}")
+                                load_more_btn.click()
+                                load_more_clicks += 1
+                                print(f"已点击'加载更多'按钮 {load_more_clicks} 次")
+                                time.sleep(3)  # 等待新内容加载
+                                
+                                # 获取点击后的项目数量
+                                try:
+                                    new_items_count = len(content_container.find_elements(By.CSS_SELECTOR, item_selector))
+                                    items_diff = new_items_count - items_before
+                                    if items_diff > 0:
+                                        print(f"点击后项目数量从 {items_before} 增加到 {new_items_count}，新增 {items_diff} 个")
+                                        items_before = new_items_count
+                                    else:
+                                        print(f"点击后项目数量未增加（当前 {new_items_count} 个），可能已加载全部内容")
+                                        if load_more_clicks >= 3:  # 连续点击3次没有新数据，认为已加载完成
+                                            break
+                                except Exception as e:
+                                    print(f"获取点击后项目数量出错: {str(e)}")
+                                
+                                # 继续下一轮循环
+                                continue
+                        except Exception as e:
+                            print(f"查找'加载更多'按钮时出错: {str(e)}")
+                    
+                    # 3. 如果没有找到加载更多按钮或不是股东数据类型，执行常规滚动操作
+                    
+                    # 计算当前容器的可见高度
+                    container_height = self.driver.execute_script(
+                        "return arguments[0].clientHeight || arguments[0].offsetHeight;", content_container)
+                    
+                    # 向上滚动一小段距离（约20%的容器高度）- 回弹策略
+                    scroll_up_distance = int(container_height * 0.2)
+                    current_scroll = self.driver.execute_script("return arguments[0].scrollTop;", content_container)
                     self.driver.execute_script(
                         "arguments[0].scrollTo(0, arguments[1]);", 
                         content_container, 
-                        max(0, current_scroll - scroll_up_distance * 2)  # 尝试滚动更大距离
+                        max(0, current_scroll - scroll_up_distance)
                     )
-                    time.sleep(1.5)
-                    self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
-                    time.sleep(1.5)
+                    time.sleep(1)  # 等待短暂时间
                     
-                    final_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
-                    if final_height == new_height:
-                        print("已到达底部")
-                        break
-                    else:
-                        # 最后一次回弹找到了更多内容
-                        new_height = final_height
-                else:
-                    print("已到达底部")
-                    break
+                    # 再次向下滚动到底部
+                    self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+                    time.sleep(1)  # 等待内容加载
+                    
+                    # 每隔一定次数显示详细进度
+                    if scroll_count % progress_interval == 0:
+                        # 尝试获取当前项目数量，用于进度比较
+                        try:
+                            items_current = len(content_container.find_elements(By.CSS_SELECTOR, item_selector))
+                            items_diff = items_current - items_before
+                            if items_diff > 0:
+                                print(f"进度更新: 已加载 {items_current} 个项目，本次新增 {items_diff} 个")
+                                items_before = items_current
+                        except:
+                            pass
+                    
+                    # 检查滚动高度变化
+                    new_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+                    
+                    # 如果高度没有变化，说明可能已经到达底部
+                    if new_height == last_height:
+                        # 连续两次高度相同，可能已到达底部
+                        # 再尝试一次回弹操作，确保真的到底了
+                        if scroll_count > 0:  # 至少已经滚动过一次
+                            print("检测到可能已到达底部，尝试最后一次回弹...")
+                            # 最后一次回弹尝试，使用更大的回弹距离
+                            self.driver.execute_script(
+                                "arguments[0].scrollTo(0, arguments[1]);", 
+                                content_container, 
+                                max(0, current_scroll - scroll_up_distance * 2)  # 更大的回弹距离
+                            )
+                            time.sleep(1.5)
+                            self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+                            time.sleep(1.5)
+                            
+                            final_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+                            if final_height == new_height:
+                                # 尝试最后的随机滚动
+                                for i in range(3):
+                                    random_pos = int(new_height * 0.7 * (i+1)/3)  # 在70%高度范围内的不同位置
+                                    self.driver.execute_script(
+                                        "arguments[0].scrollTo(0, arguments[1]);", 
+                                        content_container, random_pos
+                                    )
+                                    time.sleep(1)
+                                    
+                                # 最后再滚动到底部
+                                self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+                                time.sleep(2)
+                                
+                                # 再次检查高度
+                                very_final_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+                                if very_final_height == final_height:
+                                    print("已确认到达底部，滚动完成")
+                                    
+                                    # 最终验证：检查是否获取了所有项目
+                                    try:
+                                        final_items = len(content_container.find_elements(By.CSS_SELECTOR, item_selector))
+                                        print(f"滚动完成! 共加载了 {final_items} 个项目")
+                                    except:
+                                        pass
+                                        
+                                    break
+                                else:
+                                    # 随机滚动找到了更多内容
+                                    new_height = very_final_height
+                                    print(f"随机滚动后找到更多内容，继续滚动。新高度: {new_height}px")
+                            else:
+                                # 最后一次回弹找到了更多内容
+                                new_height = final_height
+                                print(f"回弹操作找到更多内容，继续滚动。新高度: {new_height}px")
+                        else:
+                            print("首次滚动后未发现更多内容，可能已到达底部")
+                            break
+                    
+                    last_height = new_height
+                    scroll_count += 1
+                    
+                    # 打印滚动进度
+                    elapsed_time = time.time() - (scroll_timeout - 60)  # 已经过去的时间
+                    remaining_time = max(0, scroll_timeout - time.time())
+                    progress_percent = min(100, (scroll_count / max_scroll_attempts) * 100)
+                    print(f"滚动进度: {progress_percent:.1f}% ({scroll_count}/{max_scroll_attempts}) | 已用时: {elapsed_time:.1f}秒 | 剩余时间: {remaining_time:.1f}秒 | 当前高度: {new_height}px")
+                    
+                except Exception as e:
+                    print(f"滚动过程中出错: {str(e)}，尝试继续滚动")
+                    time.sleep(1)  # 遇到错误时短暂暂停
             
-            last_height = new_height
-            scroll_count += 1
-            print(f"滚动次数: {scroll_count}, 当前高度: {new_height}")
-
-        
-        if time.time() >= scroll_timeout:
-            print("滚动加载超时")
-        elif scroll_count >= max_scroll_attempts:
-            print("达到最大滚动次数")
+            # 检查滚动终止原因
+            if time.time() >= scroll_timeout:
+                print(f"滚动加载超时 ({scroll_timeout-time.time()+(scroll_timeout-60):.1f}秒)，但已加载部分内容")
+            elif scroll_count >= max_scroll_attempts:
+                print(f"达到最大滚动次数 ({max_scroll_attempts})，但已加载部分内容")
+            elif load_more_clicks >= max_load_more_clicks:
+                print(f"达到最大加载更多点击次数 ({max_load_more_clicks})，但已加载部分内容")
+                
+            # 最终滚动到顶部，确保后续处理从头开始
+            self.driver.execute_script("arguments[0].scrollTo(0, 0);", content_container)
+            
+            # 检查最终结果
+            if content_type in ['group_members', 'investments', 'investors'] or item_selector == "a.component-shareholder-item":
+                try:
+                    final_count = len(content_container.find_elements(By.CSS_SELECTOR, item_selector))
+                    print(f"数据加载总结: 初始项目数: {initial_items_count}, 最终项目数: {final_count}, 增加了: {final_count - initial_items_count}")
+                    if load_more_clicks > 0:
+                        print(f"共点击了'加载更多'按钮 {load_more_clicks} 次")
+                except Exception as e:
+                    print(f"计算最终项目数时出错: {str(e)}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"滚动容器时出现异常: {str(e)}")
+            # 出现异常时尝试滚动到顶部
+            try:
+                self.driver.execute_script("arguments[0].scrollTo(0, 0);", content_container)
+            except:
+                pass
+            return False
 
     def extract_group_members(self, content_container):
-        """提取集团成员信息"""
+        """提取集团成员信息 - 增强版，增加数据验证和日志输出"""
         results = []
-        member_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
-        print(f"找到 {len(member_items)} 个集团成员")
         
-        for item in member_items:
+        # 首先确保所有成员项已加载
+        print("开始提取集团成员信息...")
+        
+        # 查找所有集团成员项
+        member_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
+        original_count = len(member_items)
+        print(f"找到 {original_count} 个集团成员")
+        
+        # 如果数量很少，提示用户可能加载不完整
+        if original_count <= 30:  # 小蓝本每页通常显示30条记录
+            print(f"警告: 只找到 {original_count} 个成员，可能未完全加载所有数据")
+        
+        # 提取每个成员信息
+        success_count = 0
+        error_count = 0
+        
+        # 使用进度指示器，便于追踪大量数据的提取进度
+        progress_interval = max(1, min(50, int(original_count / 10)))  # 至少1个，最多50个，约每10%报告一次
+        
+        for index, item in enumerate(member_items):
             try:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'成员名': name, '成员链接': link})
+                success_count += 1
+                
+                # 定期显示进度
+                if (index + 1) % progress_interval == 0 or index + 1 == original_count:
+                    progress_percent = ((index + 1) / original_count) * 100
+                    print(f"提取进度: {progress_percent:.1f}% ({index + 1}/{original_count})")
             except Exception as e:
-                print(f"提取集团成员信息出错: {str(e)}")
+                error_count += 1
+                print(f"提取第 {index + 1} 个集团成员信息出错: {str(e)}")
+        
+        # 保存到Excel前，先检查提取是否成功
+        if success_count == 0:
+            print("警告: 未能成功提取任何集团成员信息!")
+            return []
+        
+        print(f"集团成员提取完成: 成功 {success_count} 个, 失败 {error_count} 个, 成功率: {(success_count/original_count*100):.1f}%")
         
         # 保存到Excel
         if results:
@@ -389,31 +564,79 @@ class DataExtractor:
             try:
                 existing_df = self._read_existing_data('集团成员', ['成员名', '成员链接'])
                 if not existing_df.empty:
-                    print(f"合并 {len(existing_df)} 条现有集团成员数据")
+                    print(f"发现现有数据 {len(existing_df)} 条，进行合并...")
+                    # 检查是否有新增数据
+                    new_links = set(df['成员链接']) - set(existing_df['成员链接'])
+                    if new_links:
+                        print(f"发现 {len(new_links)} 条新数据，将合并到现有数据中")
+                    else:
+                        print("没有发现新数据，现有数据已包含所有集团成员")
+                    
+                    # 合并数据
                     df = pd.concat([existing_df, df], ignore_index=True)
                     # 去重
+                    original_len = len(df)
                     df = df.drop_duplicates(subset=['成员链接'], keep='last')
+                    if original_len > len(df):
+                        print(f"去重后减少了 {original_len - len(df)} 条重复记录")
+                else:
+                    print("没有发现现有数据，将创建新表")
             except Exception as e:
                 print(f"读取现有集团成员数据时出错: {str(e)}")
             
             # 使用增强的save_to_excel方法保存
-            self.save_to_excel(df, '集团成员')
-            print(f"保存了 {len(df)} 个集团成员记录")
+            save_success = self.save_to_excel(df, '集团成员')
+            if save_success:
+                print(f"成功保存 {len(df)} 条集团成员记录到Excel文件")
+            else:
+                print(f"保存集团成员数据失败，但已在内存中提取了 {len(results)} 条记录")
+        
         return results
 
     def extract_investments(self, content_container):
-        """提取对外投资信息"""
+        """提取对外投资信息 - 增强版，增加数据验证和日志输出"""
         results = []
-        investment_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
-        print(f"找到 {len(investment_items)} 个对外投资")
         
-        for item in investment_items:
+        # 首先确保所有投资项已加载
+        print("开始提取对外投资信息...")
+        
+        # 查找所有对外投资项
+        investment_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
+        original_count = len(investment_items)
+        print(f"找到 {original_count} 个对外投资")
+        
+        # 如果数量很少，提示用户可能加载不完整
+        if original_count <= 30:  # 小蓝本每页通常显示30条记录
+            print(f"警告: 只找到 {original_count} 个对外投资，可能未完全加载所有数据")
+        
+        # 提取每个投资信息
+        success_count = 0
+        error_count = 0
+        
+        # 使用进度指示器，便于追踪大量数据的提取进度
+        progress_interval = max(1, min(50, int(original_count / 10)))  # 至少1个，最多50个，约每10%报告一次
+        
+        for index, item in enumerate(investment_items):
             try:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'被投资方': name, '被投资方链接': link})
+                success_count += 1
+                
+                # 定期显示进度
+                if (index + 1) % progress_interval == 0 or index + 1 == original_count:
+                    progress_percent = ((index + 1) / original_count) * 100
+                    print(f"提取进度: {progress_percent:.1f}% ({index + 1}/{original_count})")
             except Exception as e:
-                print(f"提取对外投资信息出错: {str(e)}")
+                error_count += 1
+                print(f"提取第 {index + 1} 个对外投资信息出错: {str(e)}")
+        
+        # 保存到Excel前，先检查提取是否成功
+        if success_count == 0:
+            print("警告: 未能成功提取任何对外投资信息!")
+            return []
+        
+        print(f"对外投资提取完成: 成功 {success_count} 个, 失败 {error_count} 个, 成功率: {(success_count/original_count*100):.1f}%")
         
         # 保存到Excel
         if results:
@@ -422,31 +645,79 @@ class DataExtractor:
             try:
                 existing_df = self._read_existing_data('对外投资', ['被投资方', '被投资方链接'])
                 if not existing_df.empty:
-                    print(f"合并 {len(existing_df)} 条现有对外投资数据")
+                    print(f"发现现有数据 {len(existing_df)} 条，进行合并...")
+                    # 检查是否有新增数据
+                    new_links = set(df['被投资方链接']) - set(existing_df['被投资方链接'])
+                    if new_links:
+                        print(f"发现 {len(new_links)} 条新数据，将合并到现有数据中")
+                    else:
+                        print("没有发现新数据，现有数据已包含所有对外投资")
+                    
+                    # 合并数据
                     df = pd.concat([existing_df, df], ignore_index=True)
                     # 去重
+                    original_len = len(df)
                     df = df.drop_duplicates(subset=['被投资方链接'], keep='last')
+                    if original_len > len(df):
+                        print(f"去重后减少了 {original_len - len(df)} 条重复记录")
+                else:
+                    print("没有发现现有数据，将创建新表")
             except Exception as e:
                 print(f"读取现有对外投资数据时出错: {str(e)}")
             
             # 使用增强的save_to_excel方法保存
-            self.save_to_excel(df, '对外投资')
-            print(f"保存了 {len(df)} 个对外投资记录")
+            save_success = self.save_to_excel(df, '对外投资')
+            if save_success:
+                print(f"成功保存 {len(df)} 条对外投资记录到Excel文件")
+            else:
+                print(f"保存对外投资数据失败，但已在内存中提取了 {len(results)} 条记录")
+        
         return results
 
     def extract_investors(self, content_container):
-        """提取投资方信息"""
+        """提取投资方信息 - 增强版，增加数据验证和日志输出"""
         results = []
-        investor_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
-        print(f"找到 {len(investor_items)} 个投资方")
         
-        for item in investor_items:
+        # 首先确保所有投资方项已加载
+        print("开始提取投资方信息...")
+        
+        # 查找所有投资方项
+        investor_items = content_container.find_elements(By.CSS_SELECTOR, "div.content-item a.component-shareholder-item")
+        original_count = len(investor_items)
+        print(f"找到 {original_count} 个投资方")
+        
+        # 如果数量很少，提示用户可能加载不完整
+        if original_count <= 30:  # 小蓝本每页通常显示30条记录
+            print(f"警告: 只找到 {original_count} 个投资方，可能未完全加载所有数据")
+        
+        # 提取每个投资方信息
+        success_count = 0
+        error_count = 0
+        
+        # 使用进度指示器，便于追踪大量数据的提取进度
+        progress_interval = max(1, min(50, int(original_count / 10)))  # 至少1个，最多50个，约每10%报告一次
+        
+        for index, item in enumerate(investor_items):
             try:
                 name = item.find_element(By.CSS_SELECTOR, "div.name-impact p.name").text.strip()
                 link = item.get_attribute('href')
                 results.append({'投资方': name, '投资方链接': link})
+                success_count += 1
+                
+                # 定期显示进度
+                if (index + 1) % progress_interval == 0 or index + 1 == original_count:
+                    progress_percent = ((index + 1) / original_count) * 100
+                    print(f"提取进度: {progress_percent:.1f}% ({index + 1}/{original_count})")
             except Exception as e:
-                print(f"提取投资方信息出错: {str(e)}")
+                error_count += 1
+                print(f"提取第 {index + 1} 个投资方信息出错: {str(e)}")
+        
+        # 保存到Excel前，先检查提取是否成功
+        if success_count == 0:
+            print("警告: 未能成功提取任何投资方信息!")
+            return []
+        
+        print(f"投资方提取完成: 成功 {success_count} 个, 失败 {error_count} 个, 成功率: {(success_count/original_count*100):.1f}%")
         
         # 保存到Excel
         if results:
@@ -455,16 +726,33 @@ class DataExtractor:
             try:
                 existing_df = self._read_existing_data('投资方', ['投资方', '投资方链接'])
                 if not existing_df.empty:
-                    print(f"合并 {len(existing_df)} 条现有投资方数据")
+                    print(f"发现现有数据 {len(existing_df)} 条，进行合并...")
+                    # 检查是否有新增数据
+                    new_links = set(df['投资方链接']) - set(existing_df['投资方链接'])
+                    if new_links:
+                        print(f"发现 {len(new_links)} 条新数据，将合并到现有数据中")
+                    else:
+                        print("没有发现新数据，现有数据已包含所有投资方")
+                    
+                    # 合并数据
                     df = pd.concat([existing_df, df], ignore_index=True)
                     # 去重
+                    original_len = len(df)
                     df = df.drop_duplicates(subset=['投资方链接'], keep='last')
+                    if original_len > len(df):
+                        print(f"去重后减少了 {original_len - len(df)} 条重复记录")
+                else:
+                    print("没有发现现有数据，将创建新表")
             except Exception as e:
                 print(f"读取现有投资方数据时出错: {str(e)}")
             
             # 使用增强的save_to_excel方法保存
-            self.save_to_excel(df, '投资方')
-            print(f"保存了 {len(df)} 个投资方记录")
+            save_success = self.save_to_excel(df, '投资方')
+            if save_success:
+                print(f"成功保存 {len(df)} 条投资方记录到Excel文件")
+            else:
+                print(f"保存投资方数据失败，但已在内存中提取了 {len(results)} 条记录")
+        
         return results
 
     def process_media_data(self):

@@ -84,12 +84,34 @@ class GroupMembersCrawler(BaseCrawler):
                 print("未开启递归提取，跳过集团成员数据提取")
                 return True
             
-            # 3. 初始化输出文件
+            # 3. 为递归提取创建专门的输出文件
+            import os
+            
+            # 获取原始文件路径信息
+            original_dir = os.path.dirname(self.output_file)
+            original_filename = os.path.basename(self.output_file)
+            
+            # 判断是否是用户指定的文件名
+            if original_filename.lower() == "xiaolanben_group.xlsx":
+                # 默认文件名，使用固定的递归文件名
+                recursive_output_file = os.path.join(original_dir, "xiaolanben_group_recursive.xlsx")
+            else:
+                # 用户自定义文件名，添加_recursive后缀
+                filename_without_ext, ext = os.path.splitext(original_filename)
+                recursive_output_file = os.path.join(original_dir, f"{filename_without_ext}_recursive{ext}")
+            
+            self.members_output_file = recursive_output_file
+            print(f"递归提取将使用专门的输出文件: {recursive_output_file}")
+            
+            # 更新数据提取器的输出文件路径
+            self.members_data_extractor = CustomDataExtractor(self.driver, self.members_output_file)
+            
+            # 4. 初始化输出文件
             if not self.initialize_output_file():
                 print("初始化输出文件失败，无法继续提取数据")
                 return False
             
-            # 4. 递归提取集团成员数据
+            # 5. 递归提取集团成员数据
             print(f"\n开始递归提取集团成员数据，输出文件: {self.members_output_file}")
             
             # 记录成功提取的成员数量
@@ -116,6 +138,7 @@ class GroupMembersCrawler(BaseCrawler):
                 time.sleep(3)
             
             print(f"\n递归提取完成，成功提取 {success_count}/{len(members_df)} 个集团成员的数据")
+            print(f"所有递归提取数据已保存到: {self.members_output_file}")
             return True
             
         except Exception as e:

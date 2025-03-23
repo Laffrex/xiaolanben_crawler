@@ -55,8 +55,8 @@ class GroupCrawler(BaseCrawler):
                 
                 # 4. 处理标签页
                 try:
-                    # 修改选择器，只获取实际的标签页
-                    tabs = dialog_body.find_elements(By.CSS_SELECTOR, "div.el-tabs__nav-wrap div.el-tabs__item")
+                    # 修改选择器，使用更准确的选择器
+                    tabs = dialog_body.find_elements(By.CSS_SELECTOR, "div.el-tabs__item.is-top")
                     print(f"找到 {len(tabs)} 个标签页")
                     
                     # 打印所有标签页的文本
@@ -70,7 +70,7 @@ class GroupCrawler(BaseCrawler):
                 
                 # 处理APP标签页
                 try:
-                    app_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-0']")
+                    app_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item.is-top[aria-controls='pane-0']")
                     app_tab.click()
                     print("\n处理APP标签页")
                     time.sleep(2)
@@ -87,7 +87,7 @@ class GroupCrawler(BaseCrawler):
                 
                 # 处理Media标签页
                 try:
-                    media_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-1']")
+                    media_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item.is-top[aria-controls='pane-1']")
                     media_tab.click()
                     print("\n处理Media标签页")
                     time.sleep(2)
@@ -104,7 +104,7 @@ class GroupCrawler(BaseCrawler):
                 
                 # 处理Website标签页
                 try:
-                    website_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item[aria-controls='pane-2']")
+                    website_tab = dialog_body.find_element(By.CSS_SELECTOR, "div.el-tabs__item.is-top[aria-controls='pane-2']")
                     website_tab.click()
                     print("\n处理Website标签页")
                     time.sleep(2)

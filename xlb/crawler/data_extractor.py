@@ -256,27 +256,66 @@ class DataExtractor:
         return results
 
     def scroll_container(self, content_container):
-        """滚动加载内容"""
-        max_scroll_attempts = 30
-        scroll_timeout = time.time() + 60
+        """滚动加载内容 - 优化版"""
+        max_scroll_attempts = 50  # 增加最大滚动次数，适应更多内容
+        scroll_timeout = time.time() + 60  # 增加超时时间到120秒
         scroll_count = 0
         last_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
         
         print("开始滚动加载内容...")
         while scroll_count < max_scroll_attempts and time.time() < scroll_timeout:
-            # 滚动到底部
+            # 1. 首先滚动到底部
             self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
-            time.sleep(2)
+            time.sleep(2.5)  # 等待时间略微延长
             
-            # 计算新的滚动高度
+            # 2. 计算当前容器的可见高度
+            container_height = self.driver.execute_script(
+                "return arguments[0].clientHeight || arguments[0].offsetHeight;", content_container)
+            
+            # 3. 向上滚动一小段距离（约20%的容器高度）
+            scroll_up_distance = int(container_height * 0.2)
+            current_scroll = self.driver.execute_script("return arguments[0].scrollTop;", content_container)
+            self.driver.execute_script(
+                "arguments[0].scrollTo(0, arguments[1]);", 
+                content_container, 
+                max(0, current_scroll - scroll_up_distance)
+            )
+            time.sleep(1)  # 等待短暂时间
+            
+            # 4. 再次向下滚动到底部
+            self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+            time.sleep(1)  # 等待内容加载
+            
+            # 5. 计算新的滚动高度
             new_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
             if new_height == last_height:
-                print("已到达底部")
-                break
+                # 连续两次高度相同，可能已到达底部
+                # 再尝试一次回弹操作，确保真的到底了
+                if scroll_count > 0:  # 至少已经滚动过一次
+                    # 最后一次回弹尝试
+                    self.driver.execute_script(
+                        "arguments[0].scrollTo(0, arguments[1]);", 
+                        content_container, 
+                        max(0, current_scroll - scroll_up_distance * 2)  # 尝试滚动更大距离
+                    )
+                    time.sleep(1.5)
+                    self.driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", content_container)
+                    time.sleep(1.5)
+                    
+                    final_height = self.driver.execute_script("return arguments[0].scrollHeight", content_container)
+                    if final_height == new_height:
+                        print("已到达底部")
+                        break
+                    else:
+                        # 最后一次回弹找到了更多内容
+                        new_height = final_height
+                else:
+                    print("已到达底部")
+                    break
             
             last_height = new_height
             scroll_count += 1
-            print(f"滚动次数: {scroll_count}")
+            print(f"滚动次数: {scroll_count}, 当前高度: {new_height}")
         
         if time.time() >= scroll_timeout:
             print("滚动加载超时")

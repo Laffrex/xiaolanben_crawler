@@ -1,6 +1,7 @@
 import os
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.chrome.service import Service
 
 def get_driver_path():
     """获取ChromeDriver路径"""
@@ -58,7 +59,8 @@ def init_driver():
     
     try:
         driver_path = get_driver_path()
-        return webdriver.Chrome(executable_path=driver_path, options=options)
+        service = Service(driver_path)
+        return webdriver.Chrome(service=service, options=options)
     except WebDriverException as e:
         if "version" in str(e).lower():
             raise WebDriverException(

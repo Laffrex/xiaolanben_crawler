@@ -11,7 +11,9 @@ class ShareholderCrawler(BaseCrawler):
         super().__init__(driver, output_file)
         self.data_extractor = DataExtractor(driver, output_file)
         self.group_url = url
-
+        # DataExtractor 已经在其构造函数中初始化了所有需要的表格
+        # 包括股东数据相关的表格，因此不需要重复初始化
+    
     def get_shareholder_info(self):
         """获取股东信息并分类保存"""
         max_retries = 3

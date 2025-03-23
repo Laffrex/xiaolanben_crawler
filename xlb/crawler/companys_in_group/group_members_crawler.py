@@ -10,6 +10,7 @@ from ..company.company_crawler import CompanyCrawler
 from ..data_extractor import DataExtractor
 import openpyxl
 from openpyxl import load_workbook
+from xlb.utils.excel_manager import ExcelFileManager
 
 class GroupMembersCrawler(BaseCrawler):
     """集团成员公司数据提取爬虫"""
@@ -21,16 +22,14 @@ class GroupMembersCrawler(BaseCrawler):
         Args:
             driver: WebDriver实例
             group_output_file: 集团数据输出文件路径
-            members_output_file: 集团成员数据输出文件路径，默认为"xiaolanben_companys_in_group.xlsx"
+            members_output_file: 集团成员数据输出文件路径，默认为与集团数据相同的文件
         """
         super().__init__(driver, group_output_file)
         self.data_extractor = DataExtractor(driver, group_output_file)
         
-        # 设置集团成员数据输出文件
+        # 设置集团成员数据输出文件，默认使用与集团数据相同的文件
         if members_output_file is None:
-            # 获取main.py所在目录
-            current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            self.members_output_file = os.path.join(current_dir, "xiaolanben_companys_in_group.xlsx")
+            self.members_output_file = group_output_file
         else:
             self.members_output_file = members_output_file
             
@@ -38,56 +37,26 @@ class GroupMembersCrawler(BaseCrawler):
         self.members_data_extractor = CustomDataExtractor(driver, self.members_output_file)
     
     def initialize_output_file(self):
-        """初始化输出文件，创建所有需要的表格结构"""
-        print(f"初始化输出文件: {self.members_output_file}")
+        """初始化输出文件，使用 ExcelFileManager 确保所需表格存在"""
+        print(f"检查输出文件: {self.members_output_file}")
         
-        # 定义所有需要的表格结构
-        table_structures = {
-            'APP': ['产品名', '产品链接'],
-            'Website': ['网站名', '网站链接'],
-            '微信公众号': ['微信公众号', '链接'],
-            '微信小程序': ['微信小程序', '链接'],
-            '其他媒体': ['其他媒体', '链接']
-        }
-        
-        # 检查文件是否存在
-        if os.path.exists(self.members_output_file):
-            # 文件存在，检查表格结构
-            try:
-                book = load_workbook(self.members_output_file)
-                
-                # 检查每个表格是否存在，如果不存在则创建
-                with pd.ExcelWriter(self.members_output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                    writer.book = book
-                    
-                    for sheet_name, columns in table_structures.items():
-                        if sheet_name not in writer.book.sheetnames:
-                            # 创建空的DataFrame并保存
-                            df = pd.DataFrame(columns=columns)
-                            df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            print(f"创建表格: {sheet_name}")
-                
-                print("输出文件初始化完成")
-                return True
-            except Exception as e:
-                print(f"初始化现有文件时出错: {str(e)}")
-                # 如果出错，尝试创建新文件
-                os.remove(self.members_output_file)
-                print(f"删除损坏的文件: {self.members_output_file}")
-        
-        # 文件不存在或已删除，创建新文件
         try:
-            with pd.ExcelWriter(self.members_output_file, engine='openpyxl') as writer:
-                for sheet_name, columns in table_structures.items():
-                    # 创建空的DataFrame并保存
-                    df = pd.DataFrame(columns=columns)
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-                    print(f"创建表格: {sheet_name}")
+            # 使用 ExcelFileManager 初始化文件
+            file_manager = ExcelFileManager(self.members_output_file)
             
-            print("新输出文件创建完成")
-            return True
+            # 定义需要的表格
+            required_tables = ['APP', 'Website', '微信公众号', '微信小程序', '其他媒体']
+            
+            # 初始化表格
+            if file_manager.initialize_tables(required_tables):
+                print("输出文件检查完成")
+                return True
+            else:
+                print("输出文件初始化失败")
+                return False
+                
         except Exception as e:
-            print(f"创建新文件时出错: {str(e)}")
+            print(f"初始化输出文件时出错: {str(e)}")
             return False
     
     def extract_members_data(self, recursive=False):
@@ -331,8 +300,13 @@ class CustomDataExtractor(DataExtractor):
         return results
     
     def initialize_tables(self):
-        """初始化表格结构，确保所有需要的表格都存在"""
-        # 定义所有需要的表格结构
+        """检查表格是否存在，但不再负责创建表格
+        
+        Returns:
+            bool: 检查是否通过
+        """
+        # 定义需要的表格结构 - 只包含产品相关表格，不包含股东数据表格
+        # 这是因为 CustomDataExtractor 只用于处理集团成员的产品数据
         table_structures = {
             'APP': ['产品名', '产品链接'],
             'Website': ['网站名', '网站链接'],
@@ -342,53 +316,27 @@ class CustomDataExtractor(DataExtractor):
         }
         
         try:
-            # 检查文件是否存在
+            # 仅检查必要的表格是否存在
             if os.path.exists(self.output_file):
-                # 尝试加载现有文件
-                book = load_workbook(self.output_file)
+                # 尝试打开文件
+                excel_file = pd.ExcelFile(self.output_file)
                 
-                # 检查每个表格是否存在，如果不存在则创建
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                    writer.book = book
-                    
-                    for sheet_name, columns in table_structures.items():
-                        if sheet_name not in writer.book.sheetnames:
-                            # 创建空的DataFrame并保存
-                            df = pd.DataFrame(columns=columns)
-                            df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            print(f"创建表格: {sheet_name}")
-            else:
-                # 文件不存在，创建新文件
-                with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                    for sheet_name, columns in table_structures.items():
-                        # 创建空的DataFrame并保存
-                        df = pd.DataFrame(columns=columns)
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        print(f"创建表格: {sheet_name}")
-            
-            return True
-        except Exception as e:
-            print(f"初始化表格结构时出错: {str(e)}")
-            # 如果出错，尝试删除文件并重新创建
-            if os.path.exists(self.output_file):
-                try:
-                    os.remove(self.output_file)
-                    print(f"删除损坏的文件: {self.output_file}")
-                except:
-                    print(f"无法删除文件: {self.output_file}")
-            
-            # 创建新文件
-            try:
-                with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                    for sheet_name, columns in table_structures.items():
-                        # 创建空的DataFrame并保存
-                        df = pd.DataFrame(columns=columns)
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        print(f"创建表格: {sheet_name}")
+                # 检查需要的表格是否存在
+                missing_sheets = []
+                for sheet_name in table_structures.keys():
+                    if sheet_name not in excel_file.sheet_names:
+                        missing_sheets.append(sheet_name)
+                
+                if missing_sheets:
+                    print(f"警告: 缺少以下表格: {', '.join(missing_sheets)}")
+                    return False
                 return True
-            except Exception as e2:
-                print(f"创建新文件时出错: {str(e2)}")
+            else:
+                print(f"警告: 文件不存在: {self.output_file}")
                 return False
+        except Exception as e:
+            print(f"检查表格存在性时出错: {str(e)}")
+            return False
 
     def get_media_data_from_memory(self):
         """从内存中获取媒体数据，这个方法会被extract_media_content调用后使用"""

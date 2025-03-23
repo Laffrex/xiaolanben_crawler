@@ -1,11 +1,14 @@
 import argparse
 import os
+import gc
+import time
 from xlb.auth.auth_manager import AuthManager
 from xlb.utils.browser_utils import init_driver
 from xlb.crawler.group.shareholder_crawler import ShareholderCrawler as GroupShareholderCrawler
 from xlb.crawler.group.group_crawler import GroupCrawler
 from xlb.crawler.company.company_crawler import CompanyCrawler
 from xlb.crawler.companys_in_group.group_members_crawler import GroupMembersCrawler
+from xlb.utils.excel_manager import ExcelFileManager
 
 def parse_arguments():
     """解析命令行参数"""
@@ -29,10 +32,17 @@ def parse_arguments():
                       help='针对于集团提取产品数据（APP、Media、Website）')
     parser.add_argument('--recursive', action='store_true',
                       help='递归提取集团成员的公司数据')
-    parser.add_argument('--members-output', 
-                      help='集团成员数据输出文件名（不需要包含.xlsx扩展名），默认为"xiaolanben_companys_in_group"')
+    parser.add_argument('--members-output', metavar='FILENAME',
+                      help='集团成员数据输出文件名（不需要包含.xlsx扩展名），默认使用与集团数据相同的文件')
     
     return parser.parse_args()
+
+def release_resources(obj, name="资源"):
+    """释放对象资源并执行垃圾回收"""
+    if obj is not None:
+        del obj
+        gc.collect()  # 强制垃圾回收
+        print(f"{name}提取完成，已释放相关资源")
 
 def main():
     """主程序入口"""
@@ -55,6 +65,32 @@ def main():
     if args.members_output:
         members_output_file = os.path.join(current_dir, f"{args.members_output}.xlsx")
     
+    # 创建文件管理器并初始化表格
+    file_manager = ExcelFileManager(output_file)
+    
+    # 根据要执行的功能确定需要初始化的表格
+    required_tables = []
+    if args.group:
+        if args.all or args.shareholders:
+            required_tables.extend(['集团成员', '对外投资', '投资方'])
+        if args.all or args.products:
+            required_tables.extend(['APP', 'Website', '微信公众号', '微信小程序', '其他媒体'])
+    else:  # 公司数据
+        required_tables.extend(['APP', 'Website', '微信公众号', '微信小程序', '其他媒体'])
+    
+    # 初始化表格，如果失败则退出程序
+    print("\n开始初始化输出文件...")
+    if not file_manager.initialize_tables(required_tables):
+        print("表格初始化失败，程序退出")
+        return
+    
+    # 如果有独立的集团成员输出文件，也初始化它
+    if members_output_file and members_output_file != output_file:
+        members_file_manager = ExcelFileManager(members_output_file)
+        if not members_file_manager.initialize_tables(['APP', 'Website', '微信公众号', '微信小程序', '其他媒体']):
+            print("集团成员表格初始化失败，程序退出")
+            return
+    
     try:
         # 使用统一的浏览器初始化函数
         driver = init_driver()
@@ -69,22 +105,31 @@ def main():
             return
         
         if args.group:
-            # 处理集团数据
+            # 按顺序执行各个爬虫，确保只有一个爬虫在操作文件
+            
+            # 1. 首先处理股东数据（如果需要）
             if args.all or args.shareholders:
                 print("\n开始获取集团股东数据...")
                 shareholder_crawler = GroupShareholderCrawler(driver, output_file, args.group)
                 shareholder_crawler.get_shareholder_info()
+                # 手动释放资源，确保文件句柄关闭
+                release_resources(shareholder_crawler, "股东数据")
             
+            # 2. 然后处理产品数据（如果需要）
             if args.all or args.products:
                 print("\n开始获取集团产品数据...")
                 group_crawler = GroupCrawler(driver, output_file, args.group)
                 group_crawler.get_company_and_website_info()
+                # 手动释放资源
+                release_resources(group_crawler, "产品数据")
             
-            # 递归提取集团成员数据
+            # 3. 最后处理递归提取集团成员数据（如果需要）
             if args.recursive:
                 print("\n开始递归提取集团成员数据...")
                 members_crawler = GroupMembersCrawler(driver, output_file, members_output_file)
                 members_crawler.extract_members_data(recursive=True)
+                # 手动释放资源
+                release_resources(members_crawler, "集团成员数据")
         
         else:
             # 处理公司数据
@@ -92,6 +137,8 @@ def main():
                 print("\n开始获取公司产品数据...")
                 company_crawler = CompanyCrawler(driver, output_file, args.company)
                 company_crawler.get_company_and_website_info()
+                # 手动释放资源
+                release_resources(company_crawler, "公司数据")
         
     except Exception as e:
         print(f"程序执行出错: {str(e)}")

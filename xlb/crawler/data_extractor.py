@@ -12,68 +12,49 @@ class DataExtractor:
         self.driver = driver
         self.wait = WebDriverWait(driver, 10)
         self.output_file = output_file
-        # 初始化表格结构
-        self.initialize_tables()
+        # 不再自动初始化表格，由 ExcelFileManager 统一管理
+        # self.initialize_tables()
 
+    # 保留方法但修改实现，仅作检查用途
     def initialize_tables(self):
-        """初始化表格结构，确保所有需要的表格都存在"""
-        # 定义所有需要的表格结构
+        """检查表格是否存在，但不再负责创建表格
+        
+        Returns:
+            bool: 检查是否通过
+        """
         table_structures = {
             'APP': ['产品名', '产品链接'],
             'Website': ['网站名', '网站链接'],
             '微信公众号': ['微信公众号', '链接'],
             '微信小程序': ['微信小程序', '链接'],
-            '其他媒体': ['其他媒体', '链接']
+            '其他媒体': ['其他媒体', '链接'],
+            '集团成员': ['成员名', '成员链接'],
+            '对外投资': ['被投资方', '被投资方链接'],
+            '投资方': ['投资方', '投资方链接']
         }
         
         try:
-            # 检查文件是否存在
+            # 仅检查必要的表格是否存在
             if os.path.exists(self.output_file):
-                # 尝试加载现有文件
-                book = load_workbook(self.output_file)
+                # 尝试打开文件
+                excel_file = pd.ExcelFile(self.output_file)
                 
-                # 检查每个表格是否存在，如果不存在则创建
-                with pd.ExcelWriter(self.output_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                    writer.book = book
-                    
-                    for sheet_name, columns in table_structures.items():
-                        if sheet_name not in writer.book.sheetnames:
-                            # 创建空的DataFrame并保存
-                            df = pd.DataFrame(columns=columns)
-                            df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            print(f"创建表格: {sheet_name}")
-            else:
-                # 文件不存在，创建新文件
-                with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                    for sheet_name, columns in table_structures.items():
-                        # 创建空的DataFrame并保存
-                        df = pd.DataFrame(columns=columns)
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        print(f"创建表格: {sheet_name}")
-            
-            return True
-        except Exception as e:
-            print(f"初始化表格结构时出错: {str(e)}")
-            # 如果出错，尝试删除文件并重新创建
-            if os.path.exists(self.output_file):
-                try:
-                    os.remove(self.output_file)
-                    print(f"删除损坏的文件: {self.output_file}")
-                except:
-                    print(f"无法删除文件: {self.output_file}")
-            
-            # 创建新文件
-            try:
-                with pd.ExcelWriter(self.output_file, engine='openpyxl') as writer:
-                    for sheet_name, columns in table_structures.items():
-                        # 创建空的DataFrame并保存
-                        df = pd.DataFrame(columns=columns)
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        print(f"创建表格: {sheet_name}")
+                # 检查需要的表格是否存在
+                missing_sheets = []
+                for sheet_name in table_structures.keys():
+                    if sheet_name not in excel_file.sheet_names:
+                        missing_sheets.append(sheet_name)
+                
+                if missing_sheets:
+                    print(f"警告: 缺少以下表格: {', '.join(missing_sheets)}")
+                    return False
                 return True
-            except Exception as e2:
-                print(f"创建新文件时出错: {str(e2)}")
+            else:
+                print(f"警告: 文件不存在: {self.output_file}")
                 return False
+        except Exception as e:
+            print(f"检查表格存在性时出错: {str(e)}")
+            return False
 
     def save_to_excel(self, df, sheet_name):
         """保存数据到Excel文件的指定表格"""
